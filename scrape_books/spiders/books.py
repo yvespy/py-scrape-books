@@ -1,5 +1,9 @@
+from typing import Generator, Collection
+
 import scrapy
 from scrapy.http import Response
+
+from scrape_books.items import ScrapeBooksItem
 
 
 class BooksSpider(scrapy.Spider):
@@ -11,18 +15,28 @@ class BooksSpider(scrapy.Spider):
         words = ["One", "Two", "Three", "Four", "Five"]
         return words.index(number) + 1
 
-    def parse_book(self, response: Response):
-        yield {
-            "title": response.css("h1::text").get(),
-            "price": float(response.css("p::text").get().replace("£", "")),
-            "amount_in_stock": int(response.css("p.instock.availability::text").re_first(r"\d+")),
-            "rating": self.word_to_number(response.css("p.star-rating::attr(class)").get().replace("star-rating ", "")),
-            "category": response.css("ul.breadcrumb a::text").getall()[-1],
-            "description": response.css("#product_description + p::text").get(),
-            "upc": response.css("table.table-striped td::text").get(),
-        }
+    def parse_book(self, response: Response) -> Generator[ScrapeBooksItem]:
+        item = ScrapeBooksItem()
+        item["title"] = response.css("h1::text").get()
+        item["price"] = float(
+            response.css("p.price_color::text").get().replace("£", ""))
+        item["amount_in_stock"] = int(
+            response.css("p.instock.availability::text").re_first(r"\d+"))
+        item["rating"] = self.word_to_number(
+            response.css(
+                "p.star-rating::attr(class)"
+            ).get().replace("star-rating ", ""))
+        item["category"] = response.css("ul.breadcrumb a::text").getall()[-1]
+        item["description"] = response.css(
+            "#product_description + p::text"
+        ).get()
+        item["upc"] = response.xpath(
+            "//th[text()='UPC']/following-sibling::td/text()"
+        ).get()
 
-    def parse(self, response: Response):
+        yield item
+
+    def parse(self, response: Response) -> Collection:
         for book in response.css(".product_pod"):
             yield response.follow(
                 book.css("a::attr(href)").get(),
